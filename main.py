@@ -778,7 +778,7 @@ def parse_args(args: Iterable[str] | None = None) -> RenderSettings:
         default=Path("assets/qr.svg"),
         help="Path to static QR image. Placeholder is generated if missing.",
     )
-    parser.add_argument("-f", "--fps", type=int, default=30, help="Output frames per second.")
+    parser.add_argument("-f", "--fps", type=int, default=60, help="Output frames per second.")
 
     ns = parser.parse_args(args=args)
     if ns.target <= 0:

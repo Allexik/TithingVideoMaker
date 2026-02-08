@@ -55,4 +55,4 @@ Short flags are also supported: `-t -c -m -b -o -q -f`.
 - `--background` (required): path to background video
 - `--qr` (optional): path to QR image (`assets/qr.svg` by default), file must exist
 - `--output` (optional): output mp4 path (`output/tithing_video.mp4` by default)
-- `--fps` (optional): output frame rate, default `30`
+- `--fps` (optional): output frame rate, default `60`
