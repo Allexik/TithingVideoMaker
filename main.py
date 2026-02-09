@@ -52,26 +52,28 @@ MONTH_LABELS_UA = {
 }
 
 
-SEASON_COLORS_HEX = {
-    "winter": "#1f4083",
-    "spring": "#218a42",
-    "summer": "#8a236d",
-    "autumn": "#8c3323",
+MONTH_COLORS_HEX = {
+    # Winter
+    1:  "#2d64d2",  # January
+    2:  "#3945c6",  # February
+    12: "#408abf",  # December
+    # Spring
+    3:  "#39c680",  # March
+    4:  "#2dd264",  # April
+    5:  "#26d935",  # May
+    # Summer
+    6:  "#c639c6",  # June
+    7:  "#d9269d",  # July
+    8:  "#cc3373",  # August
+    # Autumn
+    9:  "#ccb333",  # September
+    10: "#d98526",  # October
+    11: "#b95046",  # November
 }
 
 
 def month_label_ua(month: int) -> str:
     return MONTH_LABELS_UA[month]
-
-
-def month_season_name(month: int) -> str:
-    if month in (12, 1, 2):
-        return "winter"
-    if month in (3, 4, 5):
-        return "spring"
-    if month in (6, 7, 8):
-        return "summer"
-    return "autumn"
 
 
 def hex_to_rgb(value: str) -> tuple[int, int, int]:
@@ -523,8 +525,7 @@ class SceneRenderer:
         self.height = height
         self.settings = settings
         self.month_label = month_label_ua(settings.month)
-        self.season_name = month_season_name(settings.month)
-        self.season_color = hex_to_rgb(SEASON_COLORS_HEX[self.season_name])
+        self.month_color = hex_to_rgb(MONTH_COLORS_HEX[settings.month])
         self.ratio = 0.0 if settings.target <= 0 else settings.collected / settings.target
         self.qr_image = ensure_placeholder_qr(settings.qr_path)
 
@@ -539,7 +540,7 @@ class SceneRenderer:
     def _draw_verse_section(self, overlay: Image.Image, t_norm: float) -> None:
         start = 0.03
         end = 0.36
-        alpha = segment_alpha(t_norm, start, end, fade_in_share=0.18, fade_out_share=0.13)
+        alpha = segment_alpha(t_norm, start, end, fade_in_share=0.16, fade_out_share=0.11)
         if alpha <= 0:
             return
 
@@ -595,12 +596,12 @@ class SceneRenderer:
 
         main_ratio = max(0.0, min(1.0, progress_ratio))
         if main_ratio > 0:
-            sr, sg, sb = self.season_color
+            mr, mg, mb = self.month_color
             draw.arc(
                 (x0, y0, x1, y1),
                 start=-90,
                 end=-90 + 360 * main_ratio,
-                fill=(sr, sg, sb, int(255 * alpha)),
+                fill=(mr, mg, mb, int(255 * alpha)),
                 width=thickness,
             )
 
@@ -620,18 +621,18 @@ class SceneRenderer:
     def _draw_money_section(self, overlay: Image.Image, t_norm: float) -> None:
         start = 0.42
         end = 0.94
-        section_alpha = segment_alpha(t_norm, start, end, fade_in_share=0.10, fade_out_share=0.12)
+        section_alpha = segment_alpha(t_norm, start, end, fade_in_share=0.09, fade_out_share=0.10)
         if section_alpha <= 0:
             return
 
         layer = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(layer)
 
-        enter = ease_out_cubic(segment_progress(t_norm, start + 0.01, start + 0.08))
+        enter = ease_out_cubic(segment_progress(t_norm, start, start + 0.06))
         chart_anim = ease_out_cubic(segment_progress(t_norm, start + 0.02, start + 0.09))
 
         pair_center_x = self.width // 2
-        pair_offset = int(self.width * 0.24)
+        pair_offset = int(self.width * 0.22)
         shift = int((1 - enter) * 65)
         left_x = pair_center_x - pair_offset - shift
         right_x = pair_center_x + pair_offset + shift
@@ -642,10 +643,10 @@ class SceneRenderer:
         graph_text_gap = int(self.height * 0.055)
 
         month_value = self.month_label.lower()
-        sr, sg, sb = self.season_color
+        mr, mg, mb = self.month_color
         top_segments = [
             ("Зібрано за ", self.font_label, (255, 255, 255, 240)),
-            (month_value, self.font_label, (sr, sg, sb, 245)),
+            (month_value, self.font_label, (mr, mg, mb, 245)),
         ]
         _, top_h, _, _ = _measure_text_segments(draw, top_segments)
         top_center_y = int(center_y - radius - graph_text_gap - top_h / 2)
@@ -680,7 +681,7 @@ class SceneRenderer:
         )
 
         amount_segments = [
-            (format_amount(self.settings.collected), self.font_number, (sr, sg, sb, 248)),
+            (format_amount(self.settings.collected), self.font_number, (mr, mg, mb, 248)),
             (" із ", self.font_number, (238, 238, 238, 230)),
             (format_amount(self.settings.target), self.font_number, (238, 238, 238, 230)),
         ]
@@ -694,7 +695,7 @@ class SceneRenderer:
             shadow_alpha=100,
         )
 
-        qr_size = int(min(self.width, self.height) * 0.50)
+        qr_size = int(min(self.width, self.height) * 0.53)
         qr_text_gap = int(self.height * 0.022)
         donate_text = "Donate"
         donate_bbox = draw.textbbox((0, 0), donate_text, font=self.font_donate)
@@ -854,4 +855,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
