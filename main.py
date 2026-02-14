@@ -3,11 +3,13 @@
 import argparse
 import math
 import os
+import queue
 import re
+import threading
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -16,6 +18,11 @@ try:
     from moviepy.editor import VideoClip, VideoFileClip
 except ImportError:
     from moviepy import VideoClip, VideoFileClip
+
+try:
+    from proglog import ProgressBarLogger
+except ImportError:  # pragma: no cover
+    ProgressBarLogger = None
 
 
 VERSE_TEXT = (
@@ -34,6 +41,10 @@ class RenderSettings:
     output_path: Path
     qr_path: Path
     fps: int
+
+
+class RenderCancelledError(Exception):
+    pass
 
 
 MONTH_LABELS_UA = {
@@ -753,16 +764,51 @@ class SceneRenderer:
         return np.asarray(final)
 
 
-def parse_args(args: Iterable[str] | None = None) -> RenderSettings:
+def build_settings(
+    *,
+    target: float,
+    collected: float,
+    month: int,
+    background_path: Path,
+    output_path: Path,
+    qr_path: Path,
+    fps: int,
+) -> RenderSettings:
+    if target <= 0:
+        raise ValueError("--target must be greater than 0.")
+    if collected < 0:
+        raise ValueError("--collected must be non-negative.")
+    if month < 1 or month > 12:
+        raise ValueError("--month must be an integer in range 1..12.")
+    if fps <= 0:
+        raise ValueError("--fps must be greater than 0.")
+    if not background_path.exists():
+        raise FileNotFoundError(f"Background video does not exist: {background_path}")
+    if not qr_path.exists():
+        raise FileNotFoundError(f"QR file does not exist: {qr_path}")
+
+    return RenderSettings(
+        target=target,
+        collected=collected,
+        month=month,
+        background_path=background_path,
+        output_path=output_path,
+        qr_path=qr_path,
+        fps=fps,
+    )
+
+
+def parse_args(args: Iterable[str] | None = None) -> tuple[argparse.Namespace, argparse.ArgumentParser]:
     parser = argparse.ArgumentParser(description="Generate an animated tithing video over a background clip.")
-    parser.add_argument("-t", "--target", required=True, type=float, help="Target amount for the month.")
-    parser.add_argument("-c", "--collected", required=True, type=float, help="Collected amount so far.")
-    parser.add_argument("-m", "--month", required=True, type=int, help="Month number in range 1..12.")
+    parser.add_argument("--ui", action="store_true", help="Open a simple windowed mode for entering input values.")
+    parser.add_argument("-t", "--target", type=float, help="Target amount for the month.")
+    parser.add_argument("-c", "--collected", type=float, help="Collected amount so far.")
+    parser.add_argument("-m", "--month", type=int, help="Month number in range 1..12.")
     parser.add_argument(
         "-b",
         "--background",
-        required=True,
         type=Path,
+        default=Path("backgrounds/background.mp4"),
         help="Path to the loopable background video.",
     )
     parser.add_argument(
@@ -777,38 +823,272 @@ def parse_args(args: Iterable[str] | None = None) -> RenderSettings:
         "--qr",
         type=Path,
         default=Path("assets/qr.svg"),
-        help="Path to static QR image. Placeholder is generated if missing.",
+        help="Path to static QR image. File must exist.",
     )
     parser.add_argument("-f", "--fps", type=int, default=60, help="Output frames per second.")
 
     ns = parser.parse_args(args=args)
-    if ns.target <= 0:
-        parser.error("--target must be greater than 0.")
-    if ns.collected < 0:
-        parser.error("--collected must be non-negative.")
-    if ns.month < 1 or ns.month > 12:
-        parser.error("--month must be an integer in range 1..12.")
-    if ns.fps <= 0:
-        parser.error("--fps must be greater than 0.")
-    if not ns.background.exists():
-        parser.error(f"Background video does not exist: {ns.background}")
-    if not ns.qr.exists():
-        parser.error(f"QR file does not exist: {ns.qr}")
+    return ns, parser
 
-    return RenderSettings(
-        target=ns.target,
-        collected=ns.collected,
-        month=ns.month,
-        background_path=ns.background,
-        output_path=ns.output,
-        qr_path=ns.qr,
-        fps=ns.fps,
+
+def settings_from_namespace(ns: argparse.Namespace, parser: argparse.ArgumentParser) -> RenderSettings:
+    missing: list[str] = []
+    if ns.target is None:
+        missing.append("--target/-t")
+    if ns.collected is None:
+        missing.append("--collected/-c")
+    if ns.month is None:
+        missing.append("--month/-m")
+    if missing:
+        parser.error(f"Missing required arguments (unless --ui is used): {', '.join(missing)}")
+
+    try:
+        return build_settings(
+            target=float(ns.target),
+            collected=float(ns.collected),
+            month=int(ns.month),
+            background_path=Path(ns.background),
+            output_path=Path(ns.output),
+            qr_path=Path(ns.qr),
+            fps=int(ns.fps),
+        )
+    except (ValueError, FileNotFoundError) as exc:
+        parser.error(str(exc))
+        raise AssertionError("Unreachable")
+
+
+def launch_ui(defaults: argparse.Namespace) -> None:
+    try:
+        import tkinter as tk
+        from tkinter import filedialog, messagebox, ttk
+    except Exception as exc:  # pragma: no cover
+        raise RuntimeError("Tkinter is required for --ui mode.") from exc
+
+    root = tk.Tk()
+    root.title("Tithing Video Maker")
+    root.geometry("760x460")
+    root.minsize(700, 380)
+
+    root.columnconfigure(0, weight=1)
+    root.rowconfigure(0, weight=1)
+
+    frame = ttk.Frame(root, padding=14)
+    frame.grid(row=0, column=0, sticky="nsew")
+    frame.columnconfigure(1, weight=1)
+
+    target_default = "" if defaults.target is None else str(defaults.target)
+    collected_default = "" if defaults.collected is None else str(defaults.collected)
+    month_default = defaults.month if defaults.month in MONTH_LABELS_UA else 1
+    background_default = "" if defaults.background is None else str(defaults.background)
+    output_default = str(defaults.output or Path("output/tithing_video.mp4"))
+    qr_default = str(defaults.qr or Path("assets/qr.svg"))
+    fps_default = str(defaults.fps or 60)
+
+    target_var = tk.StringVar(value=target_default)
+    collected_var = tk.StringVar(value=collected_default)
+    month_var = tk.StringVar(value=str(month_default))
+    background_var = tk.StringVar(value=background_default)
+    output_var = tk.StringVar(value=output_default)
+    qr_var = tk.StringVar(value=qr_default)
+    fps_var = tk.StringVar(value=fps_default)
+    status_var = tk.StringVar(value="Fill fields and press Render.")
+    progress_var = tk.DoubleVar(value=0.0)
+    progress_text_var = tk.StringVar(value="frame_index: 0/0")
+    progress_updates: queue.Queue[tuple[int, int]] = queue.Queue()
+
+    ttk.Label(frame, text="Target").grid(row=0, column=0, sticky="w", padx=4, pady=4)
+    ttk.Entry(frame, textvariable=target_var).grid(row=0, column=1, sticky="ew", padx=4, pady=4)
+
+    ttk.Label(frame, text="Collected").grid(row=1, column=0, sticky="w", padx=4, pady=4)
+    ttk.Entry(frame, textvariable=collected_var).grid(row=1, column=1, sticky="ew", padx=4, pady=4)
+
+    ttk.Label(frame, text="Month (1..12)").grid(row=2, column=0, sticky="w", padx=4, pady=4)
+    month_combo = ttk.Combobox(
+        frame,
+        textvariable=month_var,
+        values=[str(i) for i in range(1, 13)],
+        state="readonly",
     )
+    month_combo.grid(row=2, column=1, sticky="ew", padx=4, pady=4)
+
+    ttk.Label(frame, text="Background video").grid(row=3, column=0, sticky="w", padx=4, pady=4)
+    ttk.Entry(frame, textvariable=background_var).grid(row=3, column=1, sticky="ew", padx=4, pady=4)
+
+    def browse_background() -> None:
+        chosen = filedialog.askopenfilename(
+            title="Select background video",
+            filetypes=[("Video files", "*.mp4 *.mov *.mkv *.avi"), ("All files", "*.*")],
+        )
+        if chosen:
+            background_var.set(chosen)
+
+    ttk.Button(frame, text="Browse", command=browse_background).grid(row=3, column=2, padx=4, pady=4)
+
+    ttk.Label(frame, text="QR image").grid(row=4, column=0, sticky="w", padx=4, pady=4)
+    ttk.Entry(frame, textvariable=qr_var).grid(row=4, column=1, sticky="ew", padx=4, pady=4)
+
+    def browse_qr() -> None:
+        chosen = filedialog.askopenfilename(
+            title="Select QR file",
+            filetypes=[("Image files", "*.svg *.png *.jpg *.jpeg"), ("All files", "*.*")],
+        )
+        if chosen:
+            qr_var.set(chosen)
+
+    ttk.Button(frame, text="Browse", command=browse_qr).grid(row=4, column=2, padx=4, pady=4)
+
+    ttk.Label(frame, text="Output video").grid(row=5, column=0, sticky="w", padx=4, pady=4)
+    ttk.Entry(frame, textvariable=output_var).grid(row=5, column=1, sticky="ew", padx=4, pady=4)
+
+    def browse_output() -> None:
+        chosen = filedialog.asksaveasfilename(
+            title="Select output file",
+            defaultextension=".mp4",
+            filetypes=[("MP4 video", "*.mp4"), ("All files", "*.*")],
+        )
+        if chosen:
+            output_var.set(chosen)
+
+    ttk.Button(frame, text="Browse", command=browse_output).grid(row=5, column=2, padx=4, pady=4)
+
+    ttk.Label(frame, text="FPS").grid(row=6, column=0, sticky="w", padx=4, pady=4)
+    ttk.Entry(frame, textvariable=fps_var).grid(row=6, column=1, sticky="ew", padx=4, pady=4)
+
+    status_label = ttk.Label(frame, textvariable=status_var)
+    status_label.grid(row=7, column=0, columnspan=3, sticky="w", padx=4, pady=(12, 8))
+
+    progress = ttk.Progressbar(frame, orient="horizontal", mode="determinate", variable=progress_var, maximum=100.0)
+    progress.grid(row=8, column=0, columnspan=3, sticky="ew", padx=4, pady=(0, 4))
+    progress_text = ttk.Label(frame, textvariable=progress_text_var)
+    progress_text.grid(row=9, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 8))
+
+    render_button = ttk.Button(frame, text="Render")
+    render_button.grid(row=10, column=1, sticky="e", padx=4, pady=4)
+    cancel_button = tk.Button(
+        frame,
+        text="Cancel",
+        bg="#d7ce82",
+        fg="#3e3922",
+        activebackground="#c8be6f",
+        activeforeground="#2e2a18",
+        relief="flat",
+        state="disabled",
+        padx=10,
+    )
+    cancel_button.grid(row=10, column=0, sticky="w", padx=4, pady=4)
+    ttk.Button(frame, text="Close", command=root.destroy).grid(row=10, column=2, sticky="e", padx=4, pady=4)
+
+    running = {"active": False}
+    cancel_event = threading.Event()
+
+    def set_running(active: bool) -> None:
+        running["active"] = active
+        render_button.config(state=("disabled" if active else "normal"))
+        cancel_button.config(state=("normal" if active else "disabled"))
+        status_label.update_idletasks()
+
+    def apply_progress(frame_index: int, total_frames: int) -> None:
+        total = max(0, int(total_frames))
+        current = max(0, int(frame_index))
+        if total > 0:
+            current = min(current, total)
+            progress_var.set((current / total) * 100.0)
+            progress_text_var.set(f"frame_index: {current}/{total}")
+        else:
+            progress_var.set(0.0)
+            progress_text_var.set(f"frame_index: {current}/?")
+
+    def flush_progress_queue() -> None:
+        latest: tuple[int, int] | None = None
+        while True:
+            try:
+                latest = progress_updates.get_nowait()
+            except queue.Empty:
+                break
+
+        if latest is not None:
+            apply_progress(*latest)
+        root.after(80, flush_progress_queue)
+
+    root.after(80, flush_progress_queue)
+
+    def on_render() -> None:
+        if running["active"]:
+            return
+        try:
+            settings = build_settings(
+                target=float(target_var.get()),
+                collected=float(collected_var.get()),
+                month=int(month_var.get()),
+                background_path=Path(background_var.get()).expanduser(),
+                output_path=Path(output_var.get()).expanduser(),
+                qr_path=Path(qr_var.get()).expanduser(),
+                fps=int(fps_var.get()),
+            )
+        except (ValueError, FileNotFoundError) as exc:
+            messagebox.showerror("Invalid input", str(exc))
+            return
+        except Exception as exc:
+            messagebox.showerror("Invalid input", f"Could not parse form values: {exc}")
+            return
+
+        set_running(True)
+        cancel_event.clear()
+        status_var.set("Rendering video, please wait...")
+        apply_progress(0, 0)
+
+        def on_progress(frame_index: int, total_frames: int) -> None:
+            progress_updates.put((frame_index, total_frames))
+
+        def worker() -> None:
+            error: Exception | None = None
+            canceled = False
+            try:
+                render_video(settings, progress_callback=on_progress, cancel_event=cancel_event)
+            except RenderCancelledError:
+                canceled = True
+                try:
+                    settings.output_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+            except Exception as exc:  # pragma: no cover
+                error = exc
+
+            def finish() -> None:
+                set_running(False)
+                if canceled:
+                    status_var.set("Render canceled.")
+                    messagebox.showinfo("Canceled", "Render was canceled.")
+                elif error is None:
+                    apply_progress(1, 1)
+                    status_var.set(f"Done: {settings.output_path}")
+                    messagebox.showinfo("Done", f"Video rendered:\n{settings.output_path}")
+                else:
+                    status_var.set("Render failed.")
+                    messagebox.showerror("Render failed", str(error))
+
+            root.after(0, finish)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def on_cancel() -> None:
+        if not running["active"] or cancel_event.is_set():
+            return
+        cancel_event.set()
+        cancel_button.config(state="disabled")
+        status_var.set("Cancel requested...")
+
+    render_button.config(command=on_render)
+    cancel_button.config(command=on_cancel)
+    root.mainloop()
 
 
-def render_video(settings: RenderSettings) -> None:
+def render_video(
+    settings: RenderSettings,
+    progress_callback: Callable[[int, int], None] | None = None,
+    cancel_event: threading.Event | None = None,
+) -> None:
     settings.output_path.parent.mkdir(parents=True, exist_ok=True)
-    settings.qr_path.parent.mkdir(parents=True, exist_ok=True)
 
     background_clip = VideoFileClip(str(settings.background_path))
     output_clip: VideoClip | None = None
@@ -818,6 +1098,8 @@ def render_video(settings: RenderSettings) -> None:
         renderer = SceneRenderer(width=width, height=height, settings=settings)
 
         def frame_fn(t: float) -> np.ndarray:
+            if cancel_event is not None and cancel_event.is_set():
+                raise RenderCancelledError("Render canceled by user.")
             background_frame = background_clip.get_frame(t)
             return renderer.render_frame(background_frame, t_seconds=t, duration=duration)
 
@@ -834,6 +1116,28 @@ def render_video(settings: RenderSettings) -> None:
             else:
                 output_clip = output_clip.with_audio(audio)
 
+        logger: object = "bar"
+        if progress_callback is not None and ProgressBarLogger is not None:
+            class FrameIndexLogger(ProgressBarLogger):
+                def __init__(self, callback: Callable[[int, int], None]):
+                    super().__init__()
+                    self._callback = callback
+                    self._total_frames = 0
+
+                def bars_callback(self, bar: str, attr: str, value: int, old_value: int | None = None) -> None:
+                    if cancel_event is not None and cancel_event.is_set():
+                        raise RenderCancelledError("Render canceled by user.")
+                    if bar != "frame_index":
+                        return
+                    if attr == "total":
+                        self._total_frames = int(value)
+                        self._callback(0, self._total_frames)
+                        return
+                    if attr == "index":
+                        self._callback(int(value), self._total_frames)
+
+            logger = FrameIndexLogger(progress_callback)
+
         output_clip.write_videofile(
             str(settings.output_path),
             fps=settings.fps,
@@ -841,6 +1145,7 @@ def render_video(settings: RenderSettings) -> None:
             audio_codec="aac",
             threads=4,
             preset="medium",
+            logger=logger,
         )
     finally:
         if output_clip is not None:
@@ -849,7 +1154,11 @@ def render_video(settings: RenderSettings) -> None:
 
 
 def main() -> None:
-    settings = parse_args()
+    ns, parser = parse_args()
+    if ns.ui:
+        launch_ui(ns)
+        return
+    settings = settings_from_namespace(ns, parser)
     render_video(settings)
 
 

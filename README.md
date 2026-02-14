@@ -1,6 +1,7 @@
 ﻿# Tithing Video Maker
 
-Console tool that renders an animated tithing video over a provided loopable background video.
+Tool that renders an animated tithing video over a provided loopable background video.
+You can run it in CLI mode or in a simple windowed UI mode.
 
 ## What it builds
 
@@ -33,14 +34,13 @@ pip install moviepy numpy Pillow pymupdf
 MoviePy typically uses bundled `imageio-ffmpeg`, so a system FFmpeg install is usually not required.
 If your environment cannot use the bundled binary, install FFmpeg and make it available on PATH.
 
-## Usage
+## Usage (CLI)
 
 ```bash
 python main.py \
   --target 50000 \
   --collected 32750 \
   --month 1 \
-  --background "backgrounds/background.mp4" \
   --qr "assets/qr.svg" \
   --output "output/tithing_january.mp4"
 ```
@@ -52,7 +52,16 @@ Short flags are also supported: `-t -c -m -b -o -q -f`.
 - `--target` (required): monthly target amount
 - `--collected` (required): collected amount
 - `--month` (required): month number in range `1..12`
-- `--background` (required): path to background video
+- `--background` (optional): path to background video (`backgrounds/background.mp4` by default)
 - `--qr` (optional): path to QR image (`assets/qr.svg` by default), file must exist
 - `--output` (optional): output mp4 path (`output/tithing_video.mp4` by default)
 - `--fps` (optional): output frame rate, default `60`
+- `--ui` (optional): launch windowed form mode instead of CLI args
+
+## Usage (UI)
+
+```bash
+python main.py --ui
+```
+
+In UI mode, enter the same values (`target`, `collected`, `month`, `background`, `qr`, `output`, `fps`) and click **Render**.
