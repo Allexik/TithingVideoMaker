@@ -41,6 +41,9 @@ class RenderSettings:
     output_path: Path
     qr_path: Path
     fps: int
+    codec: str
+    preset: str
+    threads: int | None
 
 
 class RenderCancelledError(Exception):
@@ -536,6 +539,7 @@ class SceneRenderer:
         self.height = height
         self.settings = settings
         self.month_label = month_label_ua(settings.month)
+        self.month_label_lower = self.month_label.lower()
         self.month_color = hex_to_rgb(MONTH_COLORS_HEX[settings.month])
         self.ratio = 0.0 if settings.target <= 0 else settings.collected / settings.target
         self.qr_image = ensure_placeholder_qr(settings.qr_path)
@@ -548,6 +552,22 @@ class SceneRenderer:
         self.font_donate = load_font(max(34, int(height * 0.060)), bold=True)
         self.font_heart = load_heart_font(max(42, int(height * 0.074)))
 
+        dummy_draw = ImageDraw.Draw(Image.new("RGBA", (4, 4), (0, 0, 0, 0)))
+        max_text_width = int(self.width * 0.84)
+        self.verse_wrapped = wrap_text(dummy_draw, VERSE_TEXT, self.font_verse, max_text_width)
+        self.verse_spacing = max(10, int(self.height * 0.012))
+
+        mr, mg, mb = self.month_color
+        self.amount_segments = [
+            (format_amount(self.settings.collected), self.font_number, (mr, mg, mb, 248)),
+            (" із ", self.font_number, (238, 238, 238, 230)),
+            (format_amount(self.settings.target), self.font_number, (238, 238, 238, 230)),
+        ]
+        _, self.amount_height, _, _ = _measure_text_segments(dummy_draw, self.amount_segments)
+
+        self.qr_size = int(min(self.width, self.height) * 0.53)
+        self.qr_image_resized = self.qr_image.resize((self.qr_size, self.qr_size), Image.Resampling.LANCZOS)
+
     def _draw_verse_section(self, overlay: Image.Image, t_norm: float) -> None:
         start = 0.03
         end = 0.36
@@ -558,19 +578,16 @@ class SceneRenderer:
         layer = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(layer)
 
-        max_text_width = int(self.width * 0.84)
-        verse_wrapped = wrap_text(draw, VERSE_TEXT, self.font_verse, max_text_width)
-
         center_x = self.width // 2
         verse_y = int(self.height * 0.43)
         verse_size = draw_centered_multiline_text(
             draw,
-            verse_wrapped,
+            self.verse_wrapped,
             center_x=center_x,
             center_y=verse_y,
             font=self.font_verse,
             fill=(255, 255, 255, 255),
-            spacing=max(10, int(self.height * 0.012)),
+            spacing=self.verse_spacing,
             shadow_alpha=120,
         )
 
@@ -653,7 +670,7 @@ class SceneRenderer:
         thickness = max(10, int(radius * 0.22))
         graph_text_gap = int(self.height * 0.055)
 
-        month_value = self.month_label.lower()
+        month_value = self.month_label_lower
         mr, mg, mb = self.month_color
         top_segments = [
             ("Зібрано за ", self.font_label, (255, 255, 255, 240)),
@@ -691,22 +708,15 @@ class SceneRenderer:
             shadow_alpha=110,
         )
 
-        amount_segments = [
-            (format_amount(self.settings.collected), self.font_number, (mr, mg, mb, 248)),
-            (" із ", self.font_number, (238, 238, 238, 230)),
-            (format_amount(self.settings.target), self.font_number, (238, 238, 238, 230)),
-        ]
-        _, amount_h, _, _ = _measure_text_segments(draw, amount_segments)
-        amount_center_y = int(center_y + radius + graph_text_gap + amount_h / 2)
+        amount_center_y = int(center_y + radius + graph_text_gap + self.amount_height / 2)
         draw_centered_segments(
             draw,
-            amount_segments,
+            self.amount_segments,
             center_x=left_x,
             center_y=amount_center_y,
             shadow_alpha=100,
         )
 
-        qr_size = int(min(self.width, self.height) * 0.53)
         qr_text_gap = int(self.height * 0.022)
         donate_text = "Donate"
         donate_bbox = draw.textbbox((0, 0), donate_text, font=self.font_donate)
@@ -719,15 +729,14 @@ class SceneRenderer:
         heart_width = heart_bbox[2] - heart_bbox[0]
         heart_top_offset = heart_bbox[1]
         text_row_height = max(donate_height, heart_height)
-        right_total_height = qr_size + qr_text_gap + text_row_height
+        right_total_height = self.qr_size + qr_text_gap + text_row_height
 
         qr_y = center_y - right_total_height // 2
-        qr_x = right_x - qr_size // 2
+        qr_x = right_x - self.qr_size // 2
 
-        qr_img = self.qr_image.resize((qr_size, qr_size), Image.Resampling.LANCZOS).copy()
-        layer.alpha_composite(qr_img, (qr_x, qr_y))
+        layer.alpha_composite(self.qr_image_resized, (qr_x, qr_y))
 
-        row_center_y = qr_y + qr_size + qr_text_gap + text_row_height // 2
+        row_center_y = qr_y + self.qr_size + qr_text_gap + text_row_height // 2
         donate_y = row_center_y - donate_height // 2 - donate_top_offset
         heart_gap = int(self.height * 0.010)
         total_width = donate_w + heart_gap + heart_width
@@ -773,6 +782,9 @@ def build_settings(
     output_path: Path,
     qr_path: Path,
     fps: int,
+    codec: str = "libx264",
+    preset: str = "medium",
+    threads: int | None = None,
 ) -> RenderSettings:
     if target <= 0:
         raise ValueError("--target must be greater than 0.")
@@ -782,6 +794,8 @@ def build_settings(
         raise ValueError("--month must be an integer in range 1..12.")
     if fps <= 0:
         raise ValueError("--fps must be greater than 0.")
+    if threads is not None and threads <= 0:
+        raise ValueError("--threads must be greater than 0 when provided.")
     if not background_path.exists():
         raise FileNotFoundError(f"Background video does not exist: {background_path}")
     if not qr_path.exists():
@@ -795,6 +809,9 @@ def build_settings(
         output_path=output_path,
         qr_path=qr_path,
         fps=fps,
+        codec=codec,
+        preset=preset,
+        threads=threads,
     )
 
 
@@ -826,6 +843,9 @@ def parse_args(args: Iterable[str] | None = None) -> tuple[argparse.Namespace, a
         help="Path to static QR image. File must exist.",
     )
     parser.add_argument("-f", "--fps", type=int, default=60, help="Output frames per second.")
+    parser.add_argument("--threads", type=int, help="FFmpeg worker threads (default: CPU count).")
+    parser.add_argument("--codec", type=str, default="libx264", help="FFmpeg video codec.")
+    parser.add_argument("--preset", type=str, default="medium", help="FFmpeg encoding preset.")
 
     ns = parser.parse_args(args=args)
     return ns, parser
@@ -851,6 +871,9 @@ def settings_from_namespace(ns: argparse.Namespace, parser: argparse.ArgumentPar
             output_path=Path(ns.output),
             qr_path=Path(ns.qr),
             fps=int(ns.fps),
+            codec=str(ns.codec),
+            preset=str(ns.preset),
+            threads=None if ns.threads is None else int(ns.threads),
         )
     except (ValueError, FileNotFoundError) as exc:
         parser.error(str(exc))
@@ -1024,6 +1047,9 @@ def launch_ui(defaults: argparse.Namespace) -> None:
                 output_path=Path(output_var.get()).expanduser(),
                 qr_path=Path(qr_var.get()).expanduser(),
                 fps=int(fps_var.get()),
+                codec=str(defaults.codec),
+                preset=str(defaults.preset),
+                threads=defaults.threads,
             )
         except (ValueError, FileNotFoundError) as exc:
             messagebox.showerror("Invalid input", str(exc))
@@ -1089,6 +1115,7 @@ def render_video(
     cancel_event: threading.Event | None = None,
 ) -> None:
     settings.output_path.parent.mkdir(parents=True, exist_ok=True)
+    effective_threads = settings.threads if settings.threads is not None else max(1, os.cpu_count() or 1)
 
     background_clip = VideoFileClip(str(settings.background_path))
     output_clip: VideoClip | None = None
@@ -1141,10 +1168,10 @@ def render_video(
         output_clip.write_videofile(
             str(settings.output_path),
             fps=settings.fps,
-            codec="libx264",
+            codec=settings.codec,
             audio_codec="aac",
-            threads=4,
-            preset="medium",
+            threads=effective_threads,
+            preset=settings.preset,
             logger=logger,
         )
     finally:

@@ -56,7 +56,16 @@ Short flags are also supported: `-t -c -m -b -o -q -f`.
 - `--qr` (optional): path to QR image (`assets/qr.svg` by default), file must exist
 - `--output` (optional): output mp4 path (`output/tithing_video.mp4` by default)
 - `--fps` (optional): output frame rate, default `60`
+- `--threads` (optional): ffmpeg worker threads, default is detected from CPU core count
+- `--codec` (optional): ffmpeg video codec, default `libx264`
+- `--preset` (optional): ffmpeg encoder preset, default `medium`
 - `--ui` (optional): launch windowed form mode instead of CLI args
+
+### Performance Tips
+
+- Lower `--fps` to reduce CPU load from per-frame Python/Pillow rendering.
+- Increase encoding speed by using a faster preset, for example `--preset veryfast`.
+- If your ffmpeg build supports NVIDIA encoding, try `--codec h264_nvenc` to shift video encoding work to GPU.
 
 ## Usage (UI)
 
