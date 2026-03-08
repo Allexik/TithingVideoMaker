@@ -74,3 +74,8 @@ python main.py --ui
 ```
 
 In UI mode, enter the same values (`target`, `collected`, `month`, `background`, `qr`, `output`, `fps`) and click **Render**.
+
+### Quick Launch (Windows)
+
+Double-click `launch_ui.bat` in the project root to open UI directly.
+The launcher prefers `poetry run` and falls back to plain `python` if Poetry is not available.
