@@ -255,7 +255,10 @@ class SceneRenderer:
         alpha = segment_alpha(t_norm, start, end, fade_in_share=0.16, fade_out_share=0.11)
         if alpha <= 0:
             return
-        self._composite_with_alpha(overlay, self.verse_image, self.verse_position, alpha)
+
+        layer = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
+        self._composite_with_alpha(layer, self.verse_image, self.verse_position, 1.0)
+        overlay.alpha_composite(apply_layer_alpha(layer, alpha))
 
     def _draw_donut(
         self,
@@ -304,7 +307,8 @@ class SceneRenderer:
         if section_alpha <= 0:
             return
 
-        draw = ImageDraw.Draw(overlay)
+        layer = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(layer)
         enter = ease_out_cubic(segment_progress(t_norm, start, start + 0.06))
         chart_anim = ease_out_cubic(segment_progress(t_norm, start + 0.02, start + 0.09))
         shift = int((1 - enter) * 65)
@@ -313,10 +317,10 @@ class SceneRenderer:
 
         top_center_y = int(self.money_center_y - self.radius - self.graph_text_gap - self.money_title_height / 2)
         self._composite_with_alpha(
-            overlay,
+            layer,
             self.money_title_image,
             (left_x - self.money_title_image.width // 2, top_center_y - self.money_title_image.height // 2),
-            section_alpha,
+            1.0,
         )
 
         current_ratio = self.ratio * chart_anim
@@ -326,31 +330,33 @@ class SceneRenderer:
             radius=self.radius,
             thickness=self.thickness,
             progress_ratio=current_ratio,
-            alpha=section_alpha,
+            alpha=1.0,
         )
 
         percent_image = self._get_percent_image(f"{current_ratio * 100:.0f}%")
         self._composite_with_alpha(
-            overlay,
+            layer,
             percent_image,
             (left_x - percent_image.width // 2, self.money_center_y - percent_image.height // 2),
-            section_alpha,
+            1.0,
         )
 
         amount_center_y = int(self.money_center_y + self.radius + self.graph_text_gap + self.amount_height / 2)
         self._composite_with_alpha(
-            overlay,
+            layer,
             self.amount_row_image,
             (left_x - self.amount_row_image.width // 2, amount_center_y - self.amount_row_image.height // 2),
-            section_alpha,
+            1.0,
         )
 
         self._composite_with_alpha(
-            overlay,
+            layer,
             self.right_panel_image,
             (right_x - self.right_panel_image.width // 2, self.money_center_y - self.right_panel_image.height // 2),
-            section_alpha,
+            1.0,
         )
+
+        overlay.alpha_composite(apply_layer_alpha(layer, section_alpha))
 
     def render_frame(self, background_rgb: np.ndarray, t_seconds: float, duration: float) -> np.ndarray:
         t_norm = clamp(t_seconds / max(duration, 1e-6))
