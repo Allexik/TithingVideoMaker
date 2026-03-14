@@ -16,7 +16,7 @@ def build_settings(
     output_path: Path,
     qr_path: Path,
     fps: int,
-    codec: str = "libx264",
+    codec: str = "auto",
     preset: str = "medium",
     threads: int | None = None,
 ) -> RenderSettings:
@@ -77,8 +77,13 @@ def parse_args(args: Iterable[str] | None = None) -> tuple[argparse.Namespace, a
         help="Path to static QR image. File must exist.",
     )
     parser.add_argument("-f", "--fps", type=int, default=60, help="Output frames per second.")
-    parser.add_argument("--threads", type=int, help="FFmpeg worker threads (default: CPU count).")
-    parser.add_argument("--codec", type=str, default="libx264", help="FFmpeg video codec.")
+    parser.add_argument("--threads", type=int, help="FFmpeg worker threads (default: balanced automatic selection).")
+    parser.add_argument(
+        "--codec",
+        type=str,
+        default="auto",
+        help="FFmpeg video codec. Use auto to prefer NVIDIA NVENC when available.",
+    )
     parser.add_argument("--preset", type=str, default="medium", help="FFmpeg encoding preset.")
 
     ns = parser.parse_args(args=args)

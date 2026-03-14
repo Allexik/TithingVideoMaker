@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import threading
 from typing import Callable
 
@@ -16,6 +15,7 @@ try:
 except ImportError:  # pragma: no cover
     ProgressBarLogger = None
 
+from .encoding import build_encode_plan
 from .models import RenderCancelledError, RenderSettings
 from .renderer import SceneRenderer
 
@@ -26,7 +26,7 @@ def render_video(
     cancel_event: threading.Event | None = None,
 ) -> None:
     settings.output_path.parent.mkdir(parents=True, exist_ok=True)
-    effective_threads = settings.threads if settings.threads is not None else max(1, os.cpu_count() or 1)
+    encode_plan = build_encode_plan(settings)
 
     background_clip = VideoFileClip(str(settings.background_path))
     output_clip: VideoClip | None = None
@@ -80,11 +80,13 @@ def render_video(
         output_clip.write_videofile(
             str(settings.output_path),
             fps=settings.fps,
-            codec=settings.codec,
+            codec=encode_plan.codec,
             audio_codec="aac",
-            threads=effective_threads,
-            preset=settings.preset,
+            threads=encode_plan.threads,
+            preset=encode_plan.preset,
+            ffmpeg_params=list(encode_plan.ffmpeg_params),
             logger=logger,
+            pixel_format=encode_plan.pixel_format,
         )
     finally:
         if output_clip is not None:
