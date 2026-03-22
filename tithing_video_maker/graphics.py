@@ -6,6 +6,7 @@ from typing import TypeAlias
 
 from PIL import Image, ImageDraw, ImageFont
 
+from .paths import resource_path
 from .constants import MONTH_LABELS_UA
 
 Color: TypeAlias = tuple[int, int, int, int]
@@ -67,11 +68,15 @@ def format_amount(value: float) -> str:
 
 def find_font_path(bold: bool = False) -> str | None:
     windows_candidates = [
-        str(Path("assets/fonts/Nunito-Bold.ttf")) if bold else str(Path("assets/fonts/Nunito-Regular.ttf")),
-        str(Path("assets/fonts/NunitoSans-Bold.ttf"))
+        str(resource_path("assets", "fonts", "Nunito-Bold.ttf"))
         if bold
-        else str(Path("assets/fonts/NunitoSans-Regular.ttf")),
-        str(Path("assets/fonts/Fallback-Bold.ttf")) if bold else str(Path("assets/fonts/Fallback-Regular.ttf")),
+        else str(resource_path("assets", "fonts", "Nunito-Regular.ttf")),
+        str(resource_path("assets", "fonts", "NunitoSans-Bold.ttf"))
+        if bold
+        else str(resource_path("assets", "fonts", "NunitoSans-Regular.ttf")),
+        str(resource_path("assets", "fonts", "Fallback-Bold.ttf"))
+        if bold
+        else str(resource_path("assets", "fonts", "Fallback-Regular.ttf")),
         r"C:\Windows\Fonts\Nunito-Bold.ttf" if bold else r"C:\Windows\Fonts\Nunito-Regular.ttf",
         r"C:\Windows\Fonts\NunitoSans-Bold.ttf" if bold else r"C:\Windows\Fonts\NunitoSans-Regular.ttf",
         r"C:\Windows\Fonts\Nunito-ExtraBold.ttf" if bold else r"C:\Windows\Fonts\Nunito-Light.ttf",
@@ -101,8 +106,8 @@ def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFo
 
 def find_heart_font_path() -> str | None:
     candidates = [
-        str(Path("assets/fonts/HeartSymbol.ttf")),
-        str(Path("assets/fonts/SegoeUISymbol.ttf")),
+        str(resource_path("assets", "fonts", "HeartSymbol.ttf")),
+        str(resource_path("assets", "fonts", "SegoeUISymbol.ttf")),
         r"C:\Windows\Fonts\seguisym.ttf",
         r"C:\Windows\Fonts\seguiemj.ttf",
         r"C:\Windows\Fonts\segoeui.ttf",

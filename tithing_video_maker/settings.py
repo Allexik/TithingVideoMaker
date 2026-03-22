@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .models import RenderSettings
+from .paths import resolve_existing_path
 
 
 def build_settings(
@@ -20,6 +21,9 @@ def build_settings(
     preset: str = "medium",
     threads: int | None = None,
 ) -> RenderSettings:
+    background_path = resolve_existing_path(background_path)
+    qr_path = resolve_existing_path(qr_path)
+
     if target <= 0:
         raise ValueError("--target must be greater than 0.")
     if collected < 0:

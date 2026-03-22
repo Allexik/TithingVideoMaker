@@ -2,7 +2,8 @@
 output/
 
 # Local background videos
-backgrounds/
+backgrounds/*
+!backgrounds/background.mp4
 background/
 
 # Python cache / compiled files
@@ -29,6 +30,7 @@ htmlcov/
 # Build / packaging artifacts
 build/
 dist/
+*.spec
 *.egg-info/
 .eggs/
 pip-wheel-metadata/

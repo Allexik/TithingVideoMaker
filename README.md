@@ -34,6 +34,27 @@ pip install moviepy numpy Pillow pymupdf
 MoviePy typically uses bundled `imageio-ffmpeg`, so a system FFmpeg install is usually not required.
 If your environment cannot use the bundled binary, install FFmpeg and make it available on PATH.
 
+## Build Windows EXE
+
+Install the build tool into the Poetry environment:
+
+```bash
+poetry run python -m pip install pyinstaller
+```
+
+Then build both packaged launchers:
+
+```bash
+powershell -ExecutionPolicy Bypass -File .\build_exe.ps1 -Clean
+```
+
+Artifacts:
+
+- CLI build: `dist/TithingVideoMaker/TithingVideoMaker.exe`
+- UI build: `dist/TithingVideoMakerUI/TithingVideoMakerUI.exe`
+
+The build keeps app-owned folders like `assets/` and `backgrounds/` beside the executable, while PyInstaller runtime files stay under `_internal/`. The executables also bundle the `imageio-ffmpeg` runtime, so a separate FFmpeg install is usually not required.
+
 ## Usage (CLI)
 
 ```bash
