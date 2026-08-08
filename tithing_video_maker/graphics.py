@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import TypeAlias
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from .paths import resource_path
 from .constants import MONTH_LABELS_UA
@@ -13,7 +13,10 @@ Color: TypeAlias = tuple[int, int, int, int]
 TextSegment: TypeAlias = tuple[str, ImageFont.ImageFont, Color]
 MeasuredTextSegment: TypeAlias = tuple[str, ImageFont.ImageFont, Color, tuple[int, int, int, int], int]
 
-DEFAULT_TEXT_SHADOW_OFFSET = 2
+DEFAULT_TEXT_SHADOW_OFFSET = 3
+DEFAULT_TEXT_SECONDARY_SHADOW_OFFSET = 0
+DEFAULT_TEXT_SECONDARY_SHADOW_ALPHA = 55
+DEFAULT_TEXT_SECONDARY_SHADOW_STROKE_WIDTH = 1
 DEFAULT_TEXT_STROKE_WIDTH = 0
 DEFAULT_TEXT_STROKE_FILL: Color = (0, 0, 0, 255)
 
@@ -160,7 +163,8 @@ def draw_centered_multiline_text(
     font: ImageFont.ImageFont,
     fill: Color,
     spacing: int = 8,
-    shadow_alpha: int = 120,
+    shadow_alpha: int = 110,
+    secondary_shadow_alpha: int = DEFAULT_TEXT_SECONDARY_SHADOW_ALPHA,
     shadow_offset: int = DEFAULT_TEXT_SHADOW_OFFSET,
     stroke_width: int = DEFAULT_TEXT_STROKE_WIDTH,
     stroke_fill: Color = DEFAULT_TEXT_STROKE_FILL,
@@ -178,9 +182,32 @@ def draw_centered_multiline_text(
     x = center_x - width // 2 - bbox[0]
     y = center_y - height // 2 - bbox[1]
     shadow = (0, 0, 0, min(255, shadow_alpha))
+    secondary_shadow = (0, 0, 0, min(255, secondary_shadow_alpha))
     if shadow_alpha > 0 and shadow_offset > 0:
-        draw.multiline_text(
-            (x + shadow_offset, y + shadow_offset),
+        if secondary_shadow_alpha > 0:
+            text_mask = Image.new("L", draw._image.size, 0)
+            mask_draw = ImageDraw.Draw(text_mask)
+            mask_draw.multiline_text(
+                (x, y),
+                text,
+                font=font,
+                fill=255,
+                align="center",
+                spacing=spacing,
+                stroke_width=stroke_width,
+            )
+            expanded_mask = text_mask.filter(ImageFilter.MaxFilter(3))
+            alpha_mask = expanded_mask.point(
+                lambda value: value * min(255, secondary_shadow_alpha) // 255
+            )
+            secondary_layer = Image.new("RGBA", draw._image.size, (0, 0, 0, 0))
+            secondary_layer.putalpha(alpha_mask)
+            draw._image.alpha_composite(secondary_layer)
+
+        shadow_layer = Image.new("RGBA", draw._image.size, (0, 0, 0, 0))
+        shadow_draw = ImageDraw.Draw(shadow_layer)
+        shadow_draw.multiline_text(
+            (x, y),
             text,
             font=font,
             fill=shadow,
@@ -189,6 +216,7 @@ def draw_centered_multiline_text(
             stroke_width=stroke_width,
             stroke_fill=stroke_fill,
         )
+        draw._image.alpha_composite(shadow_layer, (shadow_offset, shadow_offset))
     draw.multiline_text(
         (x, y),
         text,
@@ -236,7 +264,7 @@ def draw_centered_segments(
     segments: list[TextSegment],
     center_x: int,
     center_y: int,
-    shadow_alpha: int = 95,
+    shadow_alpha: int = 110,
     shadow_offset: int = DEFAULT_TEXT_SHADOW_OFFSET,
     stroke_width: int = DEFAULT_TEXT_STROKE_WIDTH,
     stroke_fill: Color = DEFAULT_TEXT_STROKE_FILL,
@@ -248,11 +276,20 @@ def draw_centered_segments(
     left = center_x - total_width // 2
     baseline_y = center_y - height // 2 - min_top
     shadow = (0, 0, 0, min(255, shadow_alpha))
+    secondary_shadow = (0, 0, 0, DEFAULT_TEXT_SECONDARY_SHADOW_ALPHA)
 
     cursor = left
     for text, font, fill, bbox, width in items:
         x = cursor - bbox[0]
         if shadow_alpha > 0 and shadow_offset > 0:
+            draw.text(
+                (x + DEFAULT_TEXT_SECONDARY_SHADOW_OFFSET, baseline_y + DEFAULT_TEXT_SECONDARY_SHADOW_OFFSET),
+                text,
+                font=font,
+                fill=secondary_shadow,
+                stroke_width=DEFAULT_TEXT_SECONDARY_SHADOW_STROKE_WIDTH,
+                stroke_fill=secondary_shadow,
+            )
             draw.text(
                 (x + shadow_offset, baseline_y + shadow_offset),
                 text,
@@ -280,7 +317,7 @@ def draw_centered_text(
     center_y: int,
     font: ImageFont.ImageFont,
     fill: Color,
-    shadow_alpha: int = 100,
+    shadow_alpha: int = 110,
     shadow_offset: int = DEFAULT_TEXT_SHADOW_OFFSET,
     stroke_width: int = DEFAULT_TEXT_STROKE_WIDTH,
     stroke_fill: Color = DEFAULT_TEXT_STROKE_FILL,
@@ -291,7 +328,16 @@ def draw_centered_text(
     x = center_x - width // 2 - bbox[0]
     y = center_y - height // 2 - bbox[1]
     shadow = (0, 0, 0, min(255, shadow_alpha))
+    secondary_shadow = (0, 0, 0, DEFAULT_TEXT_SECONDARY_SHADOW_ALPHA)
     if shadow_alpha > 0 and shadow_offset > 0:
+        draw.text(
+            (x + DEFAULT_TEXT_SECONDARY_SHADOW_OFFSET, y + DEFAULT_TEXT_SECONDARY_SHADOW_OFFSET),
+            text,
+            font=font,
+            fill=secondary_shadow,
+            stroke_width=DEFAULT_TEXT_SECONDARY_SHADOW_STROKE_WIDTH,
+            stroke_fill=secondary_shadow,
+        )
         draw.text(
             (x + shadow_offset, y + shadow_offset),
             text,

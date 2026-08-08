@@ -31,7 +31,7 @@ from .qr import ensure_placeholder_qr
 class SceneRenderer:
     _IMAGE_PADDING = 6
     _TEXT_SCALE = 1.15
-    _GRAPH_SCALE = 1.10
+    _GRAPH_SCALE = 1.0
 
     def __init__(self, width: int, height: int, settings: RenderSettings):
         self.width = width
@@ -84,8 +84,8 @@ class SceneRenderer:
         _, self.amount_height, _, _ = measure_text_segments(self._measure_draw, self.amount_segments)
         self.money_title_height = int(math.ceil(self.money_title_height))
         self.amount_height = int(math.ceil(self.amount_height))
-        self.money_title_image = self._render_segments_image(self.money_title_segments, shadow_alpha=120)
-        self.amount_row_image = self._render_segments_image(self.amount_segments, shadow_alpha=100)
+        self.money_title_image = self._render_segments_image(self.money_title_segments, shadow_alpha=110)
+        self.amount_row_image = self._render_segments_image(self.amount_segments, shadow_alpha=110)
 
         self.qr_size = int(min(self.width, self.height) * 0.53 * 1.20)
         self.qr_image_resized = self.qr_image.resize((self.qr_size, self.qr_size), Image.Resampling.LANCZOS)
@@ -96,6 +96,7 @@ class SceneRenderer:
         self.thickness = max(10, int(self.radius * 0.22))
         self.graph_text_gap = int(self.height * 0.055)
         self.qr_text_gap = int(self.height * 0.022)
+        self.right_panel_vertical_shift = int(self.height * 0.02)
         self.heart_gap = int(self.height * 0.010)
         self.donate_text = "Donate"
         self.heart_char = "\u2665"
@@ -141,7 +142,7 @@ class SceneRenderer:
             font=self.font_verse,
             fill=(255, 255, 255, 255),
             spacing=self.verse_spacing,
-            shadow_alpha=120,
+            shadow_alpha=110,
         )
         draw_centered_multiline_text(
             draw,
@@ -222,10 +223,18 @@ class SceneRenderer:
         donate_y = row_center_y - self.donate_height // 2 - self.donate_top_offset
         text_x = width // 2 - total_width // 2
         draw.text(
-            (text_x + 2, donate_y + 2),
+            (text_x - 1, donate_y - 1),
             self.donate_text,
             font=self.font_donate,
-            fill=(0, 0, 0, 95),
+            fill=(0, 0, 0, 55),
+            stroke_width=1,
+            stroke_fill=(0, 0, 0, 55),
+        )
+        draw.text(
+            (text_x + 3, donate_y + 3),
+            self.donate_text,
+            font=self.font_donate,
+            fill=(0, 0, 0, 110),
         )
         draw.text(
             (text_x, donate_y),
@@ -236,10 +245,18 @@ class SceneRenderer:
         heart_x = text_x + self.donate_width + self.heart_gap
         heart_y = row_center_y - self.heart_height // 2 - self.heart_top_offset
         draw.text(
-            (heart_x + 2, heart_y + 2),
+            (heart_x - 1, heart_y - 1),
             self.heart_char,
             font=self.font_heart,
-            fill=(0, 0, 0, 85),
+            fill=(0, 0, 0, 55),
+            stroke_width=1,
+            stroke_fill=(0, 0, 0, 55),
+        )
+        draw.text(
+            (heart_x + 3, heart_y + 3),
+            self.heart_char,
+            font=self.font_heart,
+            fill=(0, 0, 0, 110),
         )
         draw.text(
             (heart_x, heart_y),
@@ -365,7 +382,13 @@ class SceneRenderer:
             1.0,
         )
 
-        amount_center_y = int(self.money_center_y + self.radius + self.graph_text_gap + self.amount_height / 2)
+        amount_center_y = int(
+            self.money_center_y
+            + self.radius
+            + self.graph_text_gap
+            + self.amount_height / 2
+            + self.height * 0.004
+        )
         self._composite_with_alpha(
             layer,
             self.amount_row_image,
@@ -376,7 +399,10 @@ class SceneRenderer:
         self._composite_with_alpha(
             layer,
             self.right_panel_image,
-            (right_x - self.right_panel_image.width // 2, self.money_center_y - self.right_panel_image.height // 2),
+            (
+                right_x - self.right_panel_image.width // 2,
+                self.money_center_y - self.right_panel_image.height // 2 - self.right_panel_vertical_shift,
+            ),
             1.0,
         )
 
