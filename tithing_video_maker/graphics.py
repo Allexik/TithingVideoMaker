@@ -13,6 +13,10 @@ Color: TypeAlias = tuple[int, int, int, int]
 TextSegment: TypeAlias = tuple[str, ImageFont.ImageFont, Color]
 MeasuredTextSegment: TypeAlias = tuple[str, ImageFont.ImageFont, Color, tuple[int, int, int, int], int]
 
+DEFAULT_TEXT_SHADOW_OFFSET = 2
+DEFAULT_TEXT_STROKE_WIDTH = 0
+DEFAULT_TEXT_STROKE_FILL: Color = (0, 0, 0, 255)
+
 
 def month_label_ua(month: int) -> str:
     return MONTH_LABELS_UA[month]
@@ -157,21 +161,51 @@ def draw_centered_multiline_text(
     fill: Color,
     spacing: int = 8,
     shadow_alpha: int = 120,
+    shadow_offset: int = DEFAULT_TEXT_SHADOW_OFFSET,
+    stroke_width: int = DEFAULT_TEXT_STROKE_WIDTH,
+    stroke_fill: Color = DEFAULT_TEXT_STROKE_FILL,
 ) -> tuple[int, int]:
-    bbox = draw.multiline_textbbox((0, 0), text, font=font, align="center", spacing=spacing)
+    bbox = draw.multiline_textbbox(
+        (0, 0),
+        text,
+        font=font,
+        align="center",
+        spacing=spacing,
+        stroke_width=stroke_width,
+    )
     width = bbox[2] - bbox[0]
     height = bbox[3] - bbox[1]
     x = center_x - width // 2 - bbox[0]
     y = center_y - height // 2 - bbox[1]
     shadow = (0, 0, 0, min(255, shadow_alpha))
-    draw.multiline_text((x + 2, y + 2), text, font=font, fill=shadow, align="center", spacing=spacing)
-    draw.multiline_text((x, y), text, font=font, fill=fill, align="center", spacing=spacing)
+    if shadow_alpha > 0 and shadow_offset > 0:
+        draw.multiline_text(
+            (x + shadow_offset, y + shadow_offset),
+            text,
+            font=font,
+            fill=shadow,
+            align="center",
+            spacing=spacing,
+            stroke_width=stroke_width,
+            stroke_fill=stroke_fill,
+        )
+    draw.multiline_text(
+        (x, y),
+        text,
+        font=font,
+        fill=fill,
+        align="center",
+        spacing=spacing,
+        stroke_width=stroke_width,
+        stroke_fill=stroke_fill,
+    )
     return width, height
 
 
 def measure_text_segments(
     draw: ImageDraw.ImageDraw,
     segments: list[TextSegment],
+    stroke_width: int = DEFAULT_TEXT_STROKE_WIDTH,
 ) -> tuple[int, int, int, list[MeasuredTextSegment]]:
     items: list[MeasuredTextSegment] = []
     min_top = 0
@@ -181,7 +215,7 @@ def measure_text_segments(
     for text, font, fill in segments:
         if not text:
             continue
-        bbox = draw.textbbox((0, 0), text, font=font)
+        bbox = draw.textbbox((0, 0), text, font=font, stroke_width=stroke_width)
         width = bbox[2] - bbox[0]
         total_width += width
         if first:
@@ -203,8 +237,11 @@ def draw_centered_segments(
     center_x: int,
     center_y: int,
     shadow_alpha: int = 95,
+    shadow_offset: int = DEFAULT_TEXT_SHADOW_OFFSET,
+    stroke_width: int = DEFAULT_TEXT_STROKE_WIDTH,
+    stroke_fill: Color = DEFAULT_TEXT_STROKE_FILL,
 ) -> tuple[int, int]:
-    total_width, height, min_top, items = measure_text_segments(draw, segments)
+    total_width, height, min_top, items = measure_text_segments(draw, segments, stroke_width=stroke_width)
     if not items:
         return 0, 0
 
@@ -215,8 +252,23 @@ def draw_centered_segments(
     cursor = left
     for text, font, fill, bbox, width in items:
         x = cursor - bbox[0]
-        draw.text((x + 2, baseline_y + 2), text, font=font, fill=shadow)
-        draw.text((x, baseline_y), text, font=font, fill=fill)
+        if shadow_alpha > 0 and shadow_offset > 0:
+            draw.text(
+                (x + shadow_offset, baseline_y + shadow_offset),
+                text,
+                font=font,
+                fill=shadow,
+                stroke_width=stroke_width,
+                stroke_fill=stroke_fill,
+            )
+        draw.text(
+            (x, baseline_y),
+            text,
+            font=font,
+            fill=fill,
+            stroke_width=stroke_width,
+            stroke_fill=stroke_fill,
+        )
         cursor += width
     return total_width, height
 
@@ -229,15 +281,33 @@ def draw_centered_text(
     font: ImageFont.ImageFont,
     fill: Color,
     shadow_alpha: int = 100,
+    shadow_offset: int = DEFAULT_TEXT_SHADOW_OFFSET,
+    stroke_width: int = DEFAULT_TEXT_STROKE_WIDTH,
+    stroke_fill: Color = DEFAULT_TEXT_STROKE_FILL,
 ) -> tuple[int, int]:
-    bbox = draw.textbbox((0, 0), text, font=font)
+    bbox = draw.textbbox((0, 0), text, font=font, stroke_width=stroke_width)
     width = bbox[2] - bbox[0]
     height = bbox[3] - bbox[1]
     x = center_x - width // 2 - bbox[0]
     y = center_y - height // 2 - bbox[1]
     shadow = (0, 0, 0, min(255, shadow_alpha))
-    draw.text((x + 2, y + 2), text, font=font, fill=shadow)
-    draw.text((x, y), text, font=font, fill=fill)
+    if shadow_alpha > 0 and shadow_offset > 0:
+        draw.text(
+            (x + shadow_offset, y + shadow_offset),
+            text,
+            font=font,
+            fill=shadow,
+            stroke_width=stroke_width,
+            stroke_fill=stroke_fill,
+        )
+    draw.text(
+        (x, y),
+        text,
+        font=font,
+        fill=fill,
+        stroke_width=stroke_width,
+        stroke_fill=stroke_fill,
+    )
     return width, height
 
 

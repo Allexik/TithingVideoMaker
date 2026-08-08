@@ -29,7 +29,9 @@ from .qr import ensure_placeholder_qr
 
 
 class SceneRenderer:
-    _IMAGE_PADDING = 2
+    _IMAGE_PADDING = 6
+    _TEXT_SCALE = 1.15
+    _GRAPH_SCALE = 1.10
 
     def __init__(self, width: int, height: int, settings: RenderSettings):
         self.width = width
@@ -41,13 +43,13 @@ class SceneRenderer:
         self.ratio = 0.0 if settings.target <= 0 else settings.collected / settings.target
         self.qr_image = ensure_placeholder_qr(settings.qr_path)
 
-        self.font_verse = load_font(max(36, int(height * 0.074)), bold=True)
-        self.font_reference = load_font(max(30, int(height * 0.049)), bold=True)
-        self.font_label = load_font(max(38, int(height * 0.070)), bold=True)
-        self.font_number = load_font(max(34, int(height * 0.060)), bold=True)
-        self.font_percent = load_font(max(50, int(height * 0.097)), bold=True)
-        self.font_donate = load_font(max(34, int(height * 0.060)), bold=True)
-        self.font_heart = load_heart_font(max(42, int(height * 0.074)))
+        self.font_verse = load_font(self._scaled_text_size(height, 36, 0.074), bold=True)
+        self.font_reference = load_font(self._scaled_text_size(height, 30, 0.049), bold=True)
+        self.font_label = load_font(self._scaled_text_size(height, 38, 0.070), bold=True)
+        self.font_number = load_font(self._scaled_text_size(height, 34, 0.060), bold=True)
+        self.font_percent = load_font(self._scaled_text_size(height, 50, 0.097), bold=True)
+        self.font_donate = load_font(self._scaled_text_size(height, 34, 0.060), bold=True)
+        self.font_heart = load_heart_font(self._scaled_text_size(height, 42, 0.074))
 
         self._measure_draw = ImageDraw.Draw(Image.new("RGBA", (4, 4), (0, 0, 0, 0)))
         max_text_width = int(self.width * 0.84)
@@ -85,20 +87,20 @@ class SceneRenderer:
         self.money_title_image = self._render_segments_image(self.money_title_segments, shadow_alpha=120)
         self.amount_row_image = self._render_segments_image(self.amount_segments, shadow_alpha=100)
 
-        self.qr_size = int(min(self.width, self.height) * 0.53)
+        self.qr_size = int(min(self.width, self.height) * 0.53 * 1.20)
         self.qr_image_resized = self.qr_image.resize((self.qr_size, self.qr_size), Image.Resampling.LANCZOS)
         self.money_center_y = int(self.height * 0.50)
         self.pair_center_x = self.width // 2
-        self.pair_offset = int(self.width * 0.22)
-        self.radius = int(min(self.width, self.height) * 0.225)
+        self.pair_offset = int(self.width * 0.24)
+        self.radius = int(min(self.width, self.height) * 0.225 * self._GRAPH_SCALE)
         self.thickness = max(10, int(self.radius * 0.22))
         self.graph_text_gap = int(self.height * 0.055)
         self.qr_text_gap = int(self.height * 0.022)
         self.heart_gap = int(self.height * 0.010)
         self.donate_text = "Donate"
         self.heart_char = "\u2665"
-        donate_bbox = self._measure_draw.textbbox((0, 0), self.donate_text, font=self.font_donate)
-        heart_bbox = self._measure_draw.textbbox((0, 0), self.heart_char, font=self.font_heart)
+        donate_bbox = self._measure_draw.textbbox((0, 0), self.donate_text, font=self.font_donate, stroke_width=0)
+        heart_bbox = self._measure_draw.textbbox((0, 0), self.heart_char, font=self.font_heart, stroke_width=0)
         self.donate_height = int(math.ceil(donate_bbox[3] - donate_bbox[1]))
         self.donate_width = int(math.ceil(donate_bbox[2] - donate_bbox[0]))
         self.donate_top_offset = int(math.floor(donate_bbox[1]))
@@ -108,6 +110,9 @@ class SceneRenderer:
         self.text_row_height = max(self.donate_height, self.heart_height)
         self.right_panel_image = self._build_right_panel_image()
         self.percent_image_cache: dict[str, Image.Image] = {}
+
+    def _scaled_text_size(self, height: int, minimum: int, proportion: float) -> int:
+        return int(max(minimum, int(height * proportion)) * self._TEXT_SCALE)
 
     def _build_verse_image(self) -> Image.Image:
         verse_bbox = self._measure_draw.multiline_textbbox(
@@ -180,7 +185,7 @@ class SceneRenderer:
         fill: tuple[int, int, int, int],
         shadow_alpha: int,
     ) -> Image.Image:
-        bbox = self._measure_draw.textbbox((0, 0), text, font=font)
+        bbox = self._measure_draw.textbbox((0, 0), text, font=font, stroke_width=0)
         width = int(math.ceil(bbox[2] - bbox[0]))
         height = int(math.ceil(bbox[3] - bbox[1]))
         image = Image.new(
@@ -216,13 +221,32 @@ class SceneRenderer:
         row_center_y = qr_y + self.qr_size + self.qr_text_gap + self.text_row_height // 2
         donate_y = row_center_y - self.donate_height // 2 - self.donate_top_offset
         text_x = width // 2 - total_width // 2
-        shadow_color = (0, 0, 0, 95)
-        draw.text((text_x + 2, donate_y + 2), self.donate_text, font=self.font_donate, fill=shadow_color)
-        draw.text((text_x, donate_y), self.donate_text, font=self.font_donate, fill=(255, 255, 255, 240))
+        draw.text(
+            (text_x + 2, donate_y + 2),
+            self.donate_text,
+            font=self.font_donate,
+            fill=(0, 0, 0, 95),
+        )
+        draw.text(
+            (text_x, donate_y),
+            self.donate_text,
+            font=self.font_donate,
+            fill=(255, 255, 255, 240),
+        )
         heart_x = text_x + self.donate_width + self.heart_gap
         heart_y = row_center_y - self.heart_height // 2 - self.heart_top_offset
-        draw.text((heart_x + 2, heart_y + 2), self.heart_char, font=self.font_heart, fill=(0, 0, 0, 85))
-        draw.text((heart_x, heart_y), self.heart_char, font=self.font_heart, fill=(220, 18, 46, 255))
+        draw.text(
+            (heart_x + 2, heart_y + 2),
+            self.heart_char,
+            font=self.font_heart,
+            fill=(0, 0, 0, 85),
+        )
+        draw.text(
+            (heart_x, heart_y),
+            self.heart_char,
+            font=self.font_heart,
+            fill=(220, 18, 46, 255),
+        )
         return image
 
     def _get_percent_image(self, percent_text: str) -> Image.Image:
@@ -366,7 +390,7 @@ class SceneRenderer:
         overlay = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
         base_draw = ImageDraw.Draw(overlay)
 
-        shade_alpha = int(88 + 30 * math.sin(t_norm * math.tau))
+        shade_alpha = 68
         base_draw.rectangle((0, 0, self.width, self.height), fill=(0, 0, 0, shade_alpha))
 
         self._draw_verse_section(overlay, t_norm=t_norm)
