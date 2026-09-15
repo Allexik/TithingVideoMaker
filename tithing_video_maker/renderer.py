@@ -43,13 +43,13 @@ class SceneRenderer:
         self.ratio = 0.0 if settings.target <= 0 else settings.collected / settings.target
         self.qr_image = ensure_placeholder_qr(settings.qr_path)
 
-        self.font_verse = load_font(self._scaled_text_size(height, 36, 0.074), bold=True)
-        self.font_reference = load_font(self._scaled_text_size(height, 30, 0.049), bold=True)
-        self.font_label = load_font(self._scaled_text_size(height, 38, 0.070), bold=True)
-        self.font_number = load_font(self._scaled_text_size(height, 34, 0.060), bold=True)
-        self.font_percent = load_font(self._scaled_text_size(height, 50, 0.097), bold=True)
-        self.font_donate = load_font(self._scaled_text_size(height, 34, 0.060), bold=True)
-        self.font_heart = load_heart_font(self._scaled_text_size(height, 42, 0.074))
+        self.font_verse = load_font(self._scaled_text_size(height, 0.074), bold=True)
+        self.font_reference = load_font(self._scaled_text_size(height, 0.0588), bold=True)
+        self.font_label = load_font(self._scaled_text_size(height, 0.070), bold=True)
+        self.font_number = load_font(self._scaled_text_size(height, 0.060), bold=True)
+        self.font_percent = load_font(self._scaled_text_size(height, 0.097), bold=True)
+        self.font_donate = load_font(self._scaled_text_size(height, 0.060), bold=True)
+        self.font_heart = load_heart_font(self._scaled_text_size(height, 0.074))
 
         self._measure_draw = ImageDraw.Draw(Image.new("RGBA", (4, 4), (0, 0, 0, 0)))
         max_text_width = int(self.width * 0.84)
@@ -112,8 +112,8 @@ class SceneRenderer:
         self.right_panel_image = self._build_right_panel_image()
         self.percent_image_cache: dict[str, Image.Image] = {}
 
-    def _scaled_text_size(self, height: int, minimum: int, proportion: float) -> int:
-        return int(max(minimum, int(height * proportion)) * self._TEXT_SCALE)
+    def _scaled_text_size(self, height: int, proportion: float) -> int:
+        return int(height * proportion * self._TEXT_SCALE)
 
     def _build_verse_image(self) -> Image.Image:
         verse_bbox = self._measure_draw.multiline_textbbox(
